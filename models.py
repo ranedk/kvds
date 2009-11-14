@@ -5,6 +5,7 @@ from django.utils import simplejson
 
 class Field(object):
     def __init__(self, initval=None, index=False, primary_index=False):
+        self.meta_name = 'fields'
         self.primary_index = primary_index
         self.index = index
         if self.primary_index:
@@ -26,8 +27,9 @@ class Field(object):
         return obj
 
 class ForeignKey(Field):
-    def __init(self, initval=None):
+    def __init__(self, initval=None):
         super(ForeignKey, self).__init__(initval=initval)
+        self.meta_name = 'foreign_fields'
         self.key = 'F__' + self.name
 
     def __set__(self, obj, val):
@@ -37,17 +39,16 @@ class ForeignKey(Field):
     def __get__(self, obj, objtype):
         #print "ForeignKey getting obj:", obj, "objtype:", objtype
         if isinstance(obj.foreign_fields[self.name].val, ForeignKeyManager):
-            print "take action to get foreign object and assign it to obj"
             fobj = obj.foreign_fields[self.name].val
             klass = globals()[fobj.modelname]
-            print klass
             kvds_obj = klass.get(id=fobj.id)
             obj.foreign_fields[self.name].val = kvds_obj
         return obj.foreign_fields[self.name].val
 
 class ManyToManyField(Field):
-    def __init(self, initval=None):
+    def __init__(self, initval=None):
         super(ManyToManyField, self).__init__(initval=initval)
+        self.meta_name = 'many_to_many_fields'
         self.key = 'M__' + self.name
 
 class ForeignKeyManager(object):
@@ -70,15 +71,13 @@ class ModelBase(type):
         attrs['key_prefix'] = Field(initval=attrs.get('key_prefix',name))
 
         new_class.add_to_class('_meta',{})
-        new_class._meta['fields'] = {}
-        new_class._meta['foreign_fields'] = {}
         for obj_name, obj in attrs.items():
             if isinstance(obj, Field):
                 obj.name = obj_name
-                if isinstance(obj, ForeignKey):
-                    new_class._meta['foreign_fields'].update({obj.name:obj})
-                else:
-                    new_class._meta['fields'].update({obj.name:obj})
+                if not new_class._meta.get(obj.meta_name):
+                    new_class._meta[obj.meta_name] = {}
+                new_class._meta[obj.meta_name].update({obj.name:obj})
+                print obj.meta_name, obj.name, obj
                 new_class.add_to_class(obj_name, obj)
             else:
                 new_class.add_to_class(obj_name, obj)
@@ -93,13 +92,12 @@ class Model(object):
     
     def __init__(self, init_meta=False, **o):
         self.is_saved = False
-        self.fields = {}
-        self.foreign_fields = {}
-       
-        for k,v in self._meta['fields'].items():
-            self.fields.update({ k : copy.deepcopy(v)})
-        for k,v in self._meta['foreign_fields'].items():
-            self.foreign_fields.update({ k : copy.deepcopy(v)})
+
+        for meta_field in self._meta.keys():
+            if not hasattr(self, meta_field):
+                setattr(self, meta_field,{})
+            for k,v in self._meta[meta_field].items():
+                getattr(self, meta_field).update({ k : copy.deepcopy(v)})
         
         if not o.get('id'):
             o['id'] = helper.uuid()
@@ -115,7 +113,8 @@ class Model(object):
                 else:
                     self.foreign_fields[prop].val = None
         else:
-            for prop in self.foreign_fields.keys(): self.foreign_fields[prop].val = o.get(prop)
+            if hasattr(self,'foreign_fields'):
+                for prop in self.foreign_fields.keys(): self.foreign_fields[prop].val = o.get(prop)
 
     @classmethod
     def filter(cls, **kw):
