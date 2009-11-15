@@ -16,11 +16,13 @@ class Field(object):
     
     def __get__(self, obj, objtype):
         #print "Field getting obj:", obj, "objtype:", objtype
-        return obj.fields[self.name].val
+        fo = getattr(obj, self.meta_name) 
+        return fo[self.name].val
 
     def __set__(self, obj, val):
         #print "Field setting ", obj, val
-        obj.fields[self.name].val = val
+        fo = getattr(obj, self.meta_name) 
+        fo[self.name].val = val
 
     def __deepcopy__(self, memodict):
         obj = copy.copy(self)
@@ -34,16 +36,17 @@ class ForeignKey(Field):
 
     def __set__(self, obj, val):
         assert isinstance(val,Model) or isinstance(val, ForeignKeyManager)
-        obj.foreign_fields[self.name].val = val
+        getattr(obj,self.meta_name)[self.name].val = val
     
     def __get__(self, obj, objtype):
         #print "ForeignKey getting obj:", obj, "objtype:", objtype
-        if isinstance(obj.foreign_fields[self.name].val, ForeignKeyManager):
-            fobj = obj.foreign_fields[self.name].val
+        fo = getattr(obj, self.meta_name) 
+        if isinstance(fo[self.name].val, ForeignKeyManager):
+            fobj = fo[self.name].val
             klass = globals()[fobj.modelname]
             kvds_obj = klass.get(id=fobj.id)
-            obj.foreign_fields[self.name].val = kvds_obj
-        return obj.foreign_fields[self.name].val
+            fo[self.name].val = kvds_obj
+        return fo[self.name].val
 
 class ManyToManyField(Field):
     def __init__(self, initval=None):
@@ -77,7 +80,7 @@ class ModelBase(type):
                 if not new_class._meta.get(obj.meta_name):
                     new_class._meta[obj.meta_name] = {}
                 new_class._meta[obj.meta_name].update({obj.name:obj})
-                print obj.meta_name, obj.name, obj
+                #print obj.meta_name, obj.name, obj
                 new_class.add_to_class(obj_name, obj)
             else:
                 new_class.add_to_class(obj_name, obj)
@@ -90,7 +93,7 @@ class ModelBase(type):
 class Model(object):
     __metaclass__ = ModelBase
     
-    def __init__(self, init_meta=False, **o):
+    def __init__(self, init_get=False, **o):
         self.is_saved = False
 
         for meta_field in self._meta.keys():
@@ -104,8 +107,10 @@ class Model(object):
         d = self.fields.keys()
         d.remove('modelname')
         d.remove('key_prefix')
+        ##### move this completely into the models.
+        ##### model should know abt the manager not this constructor
         for prop in d: self.fields[prop].val = o.get(prop)
-        if init_meta:
+        if init_get:
             for prop in self.foreign_fields.keys():
                 f_m = o.get(prop)
                 if f_m:
@@ -115,6 +120,7 @@ class Model(object):
         else:
             if hasattr(self,'foreign_fields'):
                 for prop in self.foreign_fields.keys(): self.foreign_fields[prop].val = o.get(prop)
+        ##################
 
     @classmethod
     def filter(cls, **kw):
@@ -188,7 +194,7 @@ def dict_to_model(d, fmodel=True):
             o.update({str(k):fobj})
         else:
             o.update({str(k):v})
-    obj = klass(init_meta=fmodel, **o)
+    obj = klass(init_get=fmodel, **o)
     return obj
 
 class Bmodel(Model):
