@@ -4,8 +4,8 @@ import helper
 from django.utils import simplejson
 
 class Field(object):
+    meta_name = 'fields'
     def __init__(self, initval=None, index=False, primary_index=False):
-        self.meta_name = 'fields'
         self.primary_index = primary_index
         self.index = index
         if self.primary_index:
@@ -13,6 +13,15 @@ class Field(object):
         self.name = ''
         self.val = initval
         self.key = self.name
+    
+    @classmethod
+    def create(cls, model_obj, mfields, o, init_get=False, **kw):
+        if not hasattr(model_obj,cls.meta_name):
+            return
+        d = mfields.keys()
+        d.remove('modelname')
+        d.remove('key_prefix')
+        for prop in d: model_obj.fields[prop].val = o.get(prop)
     
     def __get__(self, obj, objtype):
         #print "Field getting obj:", obj, "objtype:", objtype
@@ -29,10 +38,24 @@ class Field(object):
         return obj
 
 class ForeignKey(Field):
+    meta_name = 'foreign_fields'
     def __init__(self, initval=None):
         super(ForeignKey, self).__init__(initval=initval)
-        self.meta_name = 'foreign_fields'
         self.key = 'F__' + self.name
+        
+    @classmethod
+    def create(cls, model_obj, mfields, o, init_get, **kw):
+        if not hasattr(model_obj,cls.meta_name):
+            return
+        if init_get:
+            for prop in model_obj.foreign_fields.keys():
+                f_m = o.get(prop)
+                if f_m:
+                    model_obj.foreign_fields[prop].val = ForeignKeyManager(f_m.id, f_m.modelname, f_m.key_prefix)
+                else:
+                    model_obj.foreign_fields[prop].val = None
+        else:
+            for prop in model_obj.foreign_fields.keys(): model_obj.foreign_fields[prop].val = o.get(prop)
 
     def __set__(self, obj, val):
         assert isinstance(val,Model) or isinstance(val, ForeignKeyManager)
@@ -48,18 +71,18 @@ class ForeignKey(Field):
             fo[self.name].val = kvds_obj
         return fo[self.name].val
 
+class ForeignKeyManager(object):
+    def __init__(self, id, modelname, key_prefix):
+        self.id = id
+        self.modelname = modelname
+        self.key_prefix = key_prefix
+
 class ManyToManyField(Field):
     def __init__(self, initval=None):
         super(ManyToManyField, self).__init__(initval=initval)
         self.meta_name = 'many_to_many_fields'
         self.key = 'M__' + self.name
 
-class ForeignKeyManager(object):
-    def __init__(self, id, modelname, key_prefix):
-        self.id = id
-        self.modelname = modelname
-        self.key_prefix = key_prefix
-    
 class ModelBase(type):
     """
     Metaclass for kvds models
@@ -104,23 +127,11 @@ class Model(object):
         
         if not o.get('id'):
             o['id'] = helper.uuid()
-        d = self.fields.keys()
-        d.remove('modelname')
-        d.remove('key_prefix')
-        ##### move this completely into the models.
-        ##### model should know abt the manager not this constructor
-        for prop in d: self.fields[prop].val = o.get(prop)
-        if init_get:
-            for prop in self.foreign_fields.keys():
-                f_m = o.get(prop)
-                if f_m:
-                    self.foreign_fields[prop].val = ForeignKeyManager(f_m.id, f_m.modelname, f_m.key_prefix)
-                else:
-                    self.foreign_fields[prop].val = None
-        else:
-            if hasattr(self,'foreign_fields'):
-                for prop in self.foreign_fields.keys(): self.foreign_fields[prop].val = o.get(prop)
-        ##################
+        
+        for fattrs in self._meta.keys():
+            mfields = getattr(self,fattrs)
+            klass = mfields.values()[0].__class__
+            klass.create(self, mfields, o, init_get)
 
     @classmethod
     def filter(cls, **kw):
