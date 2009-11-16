@@ -5,6 +5,7 @@ from django.utils import simplejson
 
 class Field(object):
     meta_name = 'fields'
+    field_key = ''
     def __init__(self, initval=None, index=False, primary_index=False):
         self.primary_index = primary_index
         self.index = index
@@ -12,8 +13,15 @@ class Field(object):
             self.index = True
         self.name = ''
         self.val = initval
-        self.key = self.name
     
+    @classmethod
+    def pre_save(cls, model_obj, **kw):
+        pass
+    
+    @classmethod
+    def make_model(cls, k, v, **kw):
+        return v
+
     @classmethod
     def create(cls, model_obj, mfields, o, init_get=False, **kw):
         if not hasattr(model_obj,cls.meta_name):
@@ -22,6 +30,10 @@ class Field(object):
         d.remove('modelname')
         d.remove('key_prefix')
         for prop in d: model_obj.fields[prop].val = o.get(prop)
+        
+    @classmethod
+    def data(cls, model_obj, **kw):
+        return dict((f.name, f.val) for f in model_obj.fields.values())
     
     def __get__(self, obj, objtype):
         #print "Field getting obj:", obj, "objtype:", objtype
@@ -39,9 +51,19 @@ class Field(object):
 
 class ForeignKey(Field):
     meta_name = 'foreign_fields'
+    field_key = 'F__'
     def __init__(self, initval=None):
         super(ForeignKey, self).__init__(initval=initval)
-        self.key = 'F__' + self.name
+        
+    @classmethod
+    def pre_save(cls, model_obj, **kw):
+        for f in model_obj.foreign_fields.values():
+            f.val.savem2m()
+    
+    @classmethod
+    def make_model(cls, k, v, **kw):
+        fobj = dict_to_model(v)
+        return fobj
         
     @classmethod
     def create(cls, model_obj, mfields, o, init_get, **kw):
@@ -56,6 +78,18 @@ class ForeignKey(Field):
                     model_obj.foreign_fields[prop].val = None
         else:
             for prop in model_obj.foreign_fields.keys(): model_obj.foreign_fields[prop].val = o.get(prop)
+    
+    @classmethod
+    def data(cls, model_obj, **kw):
+        data = {}
+        for f in model_obj.foreign_fields.values():
+            if not f.val: continue
+            f_key = "%s%s" % (cls.field_key, f.name)
+            data[f_key] = {} 
+            data[f_key].update({'id':f.val.id}) 
+            data[f_key].update({'modelname':f.val.modelname}) 
+            data[f_key].update({'key_prefix':f.val.key_prefix}) 
+        return data
 
     def __set__(self, obj, val):
         assert isinstance(val,Model) or isinstance(val, ForeignKeyManager)
@@ -78,10 +112,10 @@ class ForeignKeyManager(object):
         self.key_prefix = key_prefix
 
 class ManyToManyField(Field):
+    meta_name = 'many_to_many_fields'
+    field_key = 'M__'
     def __init__(self, initval=None):
         super(ManyToManyField, self).__init__(initval=initval)
-        self.meta_name = 'many_to_many_fields'
-        self.key = 'M__' + self.name
 
 class ModelBase(type):
     """
@@ -96,14 +130,16 @@ class ModelBase(type):
         attrs['modelname'] = Field(initval=name)
         attrs['key_prefix'] = Field(initval=attrs.get('key_prefix',name))
 
-        new_class.add_to_class('_meta',{})
+        new_class.add_to_class('_meta', {})
+        new_class.add_to_class('field_prefix', {})
         for obj_name, obj in attrs.items():
             if isinstance(obj, Field):
                 obj.name = obj_name
                 if not new_class._meta.get(obj.meta_name):
                     new_class._meta[obj.meta_name] = {}
                 new_class._meta[obj.meta_name].update({obj.name:obj})
-                #print obj.meta_name, obj.name, obj
+                #print obj.meta_name, obj.name, obj.field_key , obj
+                new_class.field_prefix.update({obj.field_key:obj.__class__})
                 new_class.add_to_class(obj_name, obj)
             else:
                 new_class.add_to_class(obj_name, obj)
@@ -173,19 +209,17 @@ class Model(object):
     
     def __data__(self):
         data = {}
-        data.update(dict((f.name, f.val) for f in self.fields.values()))
-        for f in self.foreign_fields.values():
-            if not f.val: continue
-            f_key = "F__%s" % f.name
-            data[f_key] = {} 
-            data[f_key].update({'id':f.val.id}) 
-            data[f_key].update({'modelname':f.val.modelname}) 
-            data[f_key].update({'key_prefix':f.val.key_prefix}) 
+        for fattrs in self._meta.keys():
+            mfields = getattr(self,fattrs)
+            klass = mfields.values()[0].__class__
+            data.update(klass.data(self))
         return data
 
     def savem2m(self):
-        for f in self.foreign_fields.values():
-            f.val.savem2m()
+        for fattrs in self._meta.keys():
+            mfields = getattr(self,fattrs)
+            klass = mfields.values()[0].__class__
+            klass.pre_save(self)
         data = self.__data__()
         key = construct_key(self.key_prefix, "id", self.id)
         #print key, "=>", simplejson.dumps(data)
@@ -199,12 +233,11 @@ def dict_to_model(d, fmodel=True):
     klass = globals()[d['modelname']]
     o = {}
     for k,v in d.items():
-        if k.startswith('F__'):
-            k = k.replace('F__','',1)
-            fobj = dict_to_model(v)
-            o.update({str(k):fobj})
-        else:
-            o.update({str(k):v})
+        for fk, field_klass in klass.field_prefix.items():
+            if k.startswith(fk):
+                k = k.replace(fk ,'',1)
+                fobj = field_klass.make_model(k,v)
+                o.update({str(k):fobj})
     obj = klass(init_get=fmodel, **o)
     return obj
 
