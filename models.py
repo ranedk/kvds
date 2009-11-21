@@ -29,7 +29,7 @@ class Field(object):
         d = mfields.keys()
         d.remove('modelname')
         d.remove('key_prefix')
-        for prop in d: model_obj.fields[prop].val = o.get(prop)
+        for prop in d: setattr(model_obj, prop, o.get(prop))
         
     @classmethod
     def data(cls, model_obj, **kw):
@@ -77,7 +77,8 @@ class ForeignKey(Field):
                 else:
                     model_obj.foreign_fields[prop].val = None
         else:
-            for prop in model_obj.foreign_fields.keys(): model_obj.foreign_fields[prop].val = o.get(prop)
+            for prop in model_obj.foreign_fields.keys(): 
+                setattr(model_obj, prop, o.get(prop))
     
     @classmethod
     def data(cls, model_obj, **kw):
@@ -92,6 +93,7 @@ class ForeignKey(Field):
         return data
 
     def __set__(self, obj, val):
+        #print "ForeignKey Setter", obj, val
         assert isinstance(val,Model) or isinstance(val, ForeignKeyManager)
         getattr(obj,self.meta_name)[self.name].val = val
     
@@ -116,6 +118,65 @@ class ManyToManyField(Field):
     field_key = 'M__'
     def __init__(self, initval=None):
         super(ManyToManyField, self).__init__(initval=initval)
+
+    @classmethod
+    def pre_save(cls, model_obj, **kw):
+        for mtmf in model_obj.many_to_many_fields.values():
+            for f in mtmf.val:
+                f.savem2m()
+
+    @classmethod
+    def make_model(cls, k, v, **kw):
+        obj_models = []
+        for val in v:
+            fobj = dict_to_model(val)
+            obj_models.append(fobj)
+        return obj_models
+    """
+    need to add a add_model method to add manytomanyfields models 
+    """
+
+    @classmethod
+    def create(cls, model_obj, mfields, o, init_get, **kw):
+        if init_get:
+            for prop in model_obj.many_to_many_fields.keys():
+                mtmf = o.get(prop)
+                if mtmf:
+                    mtmf_obj = []
+                    for obj in mtmf: mtmf_obj.append(ForeignKeyManager(obj.id, obj.modelname, obj.key_prefix))
+                    model_obj.many_to_many_fields[prop].val = mtmf_obj
+        else:
+            for prop in model_obj.many_to_many_fields.keys():
+                setattr(model_obj, prop, o.get(prop))
+
+    @classmethod
+    def data(cls, model_obj, **kw):
+        data = {}
+        for mtmf in model_obj.many_to_many_fields.values():
+            #import pdb; pdb.set_trace()
+            if not mtmf.val: continue
+            d = []
+            for f in mtmf.val: 
+                d.append(f.__data__())
+            data.update({mtmf.name : d})
+        return data
+
+    def __set__(self, obj, val):
+        #print "ManyToManyField Setter", val
+        assert isinstance(val,type([]))
+        for v in val:
+            assert isinstance(v,Model) or isinstance(v, ForeignKeyManager)
+        getattr(obj,self.meta_name)[self.name].val = val
+    
+    def __get__(self, obj, objtype):
+        #print "ForeignKey getting obj:", obj, "objtype:", objtype
+        d = []
+        mtmfs = getattr(obj, self.meta_name)
+        #import pdb; pdb.set_trace()
+        for k,v in mtmfs.items():
+            for fo in v.val:
+                d.append(fo)
+        return d
 
 class ModelBase(type):
     """
@@ -250,17 +311,17 @@ class Amodel(Model):
     key_prefix = 'kvds__a__comment'
     a1 = Field()
     a2 = Field()
-    a3 = ForeignKey()
+    a3 = Field()
 
 class Comment(Model):
     key_prefix = 'kvds__comment'
     tmp = Field()
-    tmp1 = Field(index = True)
-    tmpf = ForeignKey()
+    tmp1 = ManyToManyField()
+    #tmpf = ForeignKey()
 
 #sample run
 bitem = Bmodel(b1='itemb1',b2='itemb2')
-aitem = Amodel(a1='itema1', a2='itema2', a3=bitem)
-c = Comment(tmp='Rane was here', tmp1=['sdfsd','56ffg',456], tmpf=aitem)
+aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
+c = Comment(tmp='Rane was here', tmp1=[aitem,bitem])
 
 #c.savem2m()
