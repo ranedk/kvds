@@ -8,7 +8,8 @@ class Field(object):
     #TODO: add add() for many to many field
     meta_name = 'fields'
     field_key = ''
-    def __init__(self, initval=None, index=False, primary_index=False):
+    def __init__(self, initval=None, index=False, required=True, primary_index=False):
+        self.required = required
         self.primary_index = primary_index
         self.index = index
         if self.primary_index:
@@ -43,6 +44,9 @@ class Field(object):
         return fo[self.name].val
 
     def __set__(self, obj, val):
+        if self.required:
+            if not val:
+                raise FieldError("%s is a required Field" % (self.name))
         #print "Field setting ", obj, val
         fo = getattr(obj, self.meta_name) 
         fo[self.name].val = val
@@ -96,6 +100,9 @@ class ForeignKey(Field):
 
     def __set__(self, obj, val):
         #print "ForeignKey Setter", obj, val
+        if self.required:
+            if not val:
+                raise FieldError("%s is a required Field" % (self.name))
         assert isinstance(val,Model) or isinstance(val, ForeignKeyManager)
         getattr(obj,self.meta_name)[self.name].val = val
     
@@ -166,6 +173,9 @@ class ManyToManyField(Field):
 
     def __set__(self, obj, val):
         #print "ManyToManyField Setter", val
+        if self.required:
+            if not val:
+                raise FieldError("%s is a required Field" % (self.name))
         assert isinstance(val,type([]))
         for v in val:
             assert isinstance(v,Model) or isinstance(v, ManyToManyFieldManager)
@@ -311,6 +321,10 @@ def dict_to_model(d, fmodel=True):
     obj = klass(init_get=fmodel, **o)
     return obj
 
+class FieldError(Exception):
+    "The requested view does not exist"
+    pass
+
 class Bmodel(Model):
     key_prefix = 'kvds__b__comment'
     b1 = Field()
@@ -336,9 +350,9 @@ class Comment(Model):
     tmpf = ForeignKey()
 
 #sample run
-#bitem = Bmodel(b1='itemb1',b2='itemb2')
-#aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
-#citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
-#c = Comment(tmp='Rane was here', tmp1=[aitem,bitem], tmpf=citem)
+bitem = Bmodel(b1='itemb1',b2='itemb2')
+aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
+citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
+c = Comment(tmp='Rane was here', tmp1=[aitem,bitem])
 
 #c.savem2m()
