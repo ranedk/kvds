@@ -5,6 +5,7 @@ from django.utils import simplejson
 
 class Field(object):
     #TODO: add required field
+    #TODO: add add() for many to many field
     meta_name = 'fields'
     field_key = ''
     def __init__(self, initval=None, index=False, primary_index=False):
@@ -133,9 +134,6 @@ class ManyToManyField(Field):
             fobj = dict_to_model(val)
             obj_models.append(fobj)
         return obj_models
-    """
-    need to add a add_model method to add manytomanyfields models 
-    """
 
     @classmethod
     def create(cls, model_obj, mfields, o, init_get, **kw):
@@ -143,9 +141,8 @@ class ManyToManyField(Field):
             for prop in model_obj.many_to_many_fields.keys():
                 mtmf = o.get(prop)
                 if mtmf:
-                    mtmf_obj = []
-                    for obj in mtmf: mtmf_obj.append(ForeignKeyManager(obj.id, obj.modelname, obj.key_prefix))
-                    model_obj.many_to_many_fields[prop].val = mtmf_obj
+                    manager_obj = ManyToManyFieldManager(mtmf)
+                    model_obj.many_to_many_fields[prop].val = manager_obj
         else:
             for prop in model_obj.many_to_many_fields.keys():
                 setattr(model_obj, prop, o.get(prop))
@@ -171,18 +168,24 @@ class ManyToManyField(Field):
         #print "ManyToManyField Setter", val
         assert isinstance(val,type([]))
         for v in val:
-            assert isinstance(v,Model) or isinstance(v, ForeignKeyManager)
+            assert isinstance(v,Model) or isinstance(v, ManyToManyFieldManager)
         getattr(obj,self.meta_name)[self.name].val = val
     
     def __get__(self, obj, objtype):
         #print "ForeignKey getting obj:", obj, "objtype:", objtype
         d = []
-        mtmfs = getattr(obj, self.meta_name)
-        #import pdb; pdb.set_trace()
-        for k,v in mtmfs.items():
-            for fo in v.val:
-                d.append(fo)
-        return d
+        fo = getattr(obj, self.meta_name) 
+        if isinstance(fo[self.name].val, ManyToManyFieldManager):
+            for fobj in fo[self.name].val.obj_fields:
+                klass = globals()[fobj.modelname]
+                kvds_obj = klass.get(id=fobj.id)
+                d.append(kvds_obj)          
+            fo[self.name].val = d
+        return fo[self.name].val
+
+class ManyToManyFieldManager(object):
+    def __init__(self, obj):
+        self.obj_fields = obj
 
 class ModelBase(type):
     """
@@ -289,8 +292,8 @@ class Model(object):
             klass.pre_save(self)
         data = self.__data__()
         key = construct_key(self.key_prefix, "id", self.id)
-        print key, "=>", simplejson.dumps(data)
-        #helper.kvds(key=key, value=simplejson.dumps(data))
+        #print key, "=>", simplejson.dumps(data)
+        helper.kvds(key=key, value=simplejson.dumps(data))
         self.is_saved = True
 
 def construct_key(key_prefix, keyname, key):
@@ -333,9 +336,9 @@ class Comment(Model):
     tmpf = ForeignKey()
 
 #sample run
-bitem = Bmodel(b1='itemb1',b2='itemb2')
-aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
-citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
-c = Comment(tmp='Rane was here', tmp1=[aitem,bitem], tmpf=citem)
+#bitem = Bmodel(b1='itemb1',b2='itemb2')
+#aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
+#citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
+#c = Comment(tmp='Rane was here', tmp1=[aitem,bitem], tmpf=citem)
 
 #c.savem2m()
