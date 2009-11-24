@@ -4,8 +4,6 @@ import helper
 from django.utils import simplejson
 
 class Field(object):
-    #TODO: add required field
-    #TODO: add add() for many to many field
     meta_name = 'fields'
     field_key = ''
     def __init__(self, initval=None, index=False, required=True, primary_index=False):
@@ -13,7 +11,7 @@ class Field(object):
         self.primary_index = primary_index
         self.index = index
         if self.primary_index:
-            self.index = True
+            self.index = False
         self.name = ''
         self.val = initval
     
@@ -158,7 +156,6 @@ class ManyToManyField(Field):
     def data(cls, model_obj, **kw):
         data = {}
         for mtmf in model_obj.many_to_many_fields.values():
-            #import pdb; pdb.set_trace()
             if not mtmf.val: continue
             d = []
             for f in mtmf.val: 
@@ -279,14 +276,8 @@ class Model(object):
         return o
 
     def __related_data__(self):
-        data = {}
-        data.update(dict((f.name, f.val) for f in self.fields.values()))
-        for f in self.foreign_fields.values():
-            f_key = "F__%s" % f.name
-            data[f_key] = {}
-            data[f_key].update(f.val.__related_data__()) 
-        return data
-    
+        pass
+
     def __data__(self):
         data = {}
         for fattrs in self._meta.keys():
@@ -301,9 +292,21 @@ class Model(object):
             klass = mfields.values()[0].__class__
             klass.pre_save(self)
         data = self.__data__()
-        key = construct_key(self.key_prefix, "id", self.id)
-        #print key, "=>", simplejson.dumps(data)
-        helper.kvds(key=key, value=simplejson.dumps(data))
+        primary_index_keys = []
+        for k,f in self.fields.items():
+            if f.primary_index:
+                v = getattr(self, k)
+                key = construct_key(self.key_prefix, k, v)
+                primary_index_keys.append(key)
+                #print key, "=>", simplejson.dumps(data)
+                helper.kvds(key=key, value=simplejson.dumps(data))
+        for k,f in self.fields.items():
+            if f.index:
+                v = getattr(self, k)
+                index_key = construct_key(self.key_prefix, k, v)
+                for pik in primary_index_keys:
+                    #print index_key, "=>", pik
+                    helper.kvds(key=index_key, pik)
         self.is_saved = True
 
 def construct_key(key_prefix, keyname, key):
@@ -348,11 +351,12 @@ class Comment(Model):
     tmp = Field()
     tmp1 = ManyToManyField()
     tmpf = ForeignKey()
+    ptmp = Field(index=True)
 
 #sample run
 bitem = Bmodel(b1='itemb1',b2='itemb2')
 aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
 citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
-c = Comment(tmp='Rane was here', tmp1=[aitem,bitem])
+c = Comment(tmp='Rane was here', tmp1=[aitem,bitem], tmpf=citem, ptmp='rane')
 
-#c.savem2m()
+c.savem2m()
