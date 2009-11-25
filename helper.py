@@ -1,4 +1,4 @@
-import time, random, hashlib, re, os, md5, sys
+import time, random, hashlib, re, os, sys
 import urllib2, urllib, types, urlparse
 from django.utils import simplejson
 
@@ -63,4 +63,3 @@ def uuid( *args ):
   data = str(t)+' '+str(r)+' '+str(a)+' '+str(args)
   data = hashlib.md5(data).hexdigest()
   return data
-
