@@ -5,7 +5,21 @@ from django.utils import simplejson
 from common import dict_to_model, construct_key
 
 class Field(object):
+    """ Base Field class, Other Fields extend this one 
+    All indexes in the model must be of  type Field
+    Used for integer, float, string types
+    Parameters:
+    - initval : initial value for the field
+    - index : if this is True, tyrant will store a a key-value pair with 
+    this field as the key and the primary key as the value
+    - required : Will raise exception if this field is missing when 
+    initializing model
+    - primary_index : if this is True, complete model will be saved with
+    this field value as key and the model as value, in addition to the id
+    """
+    # key name to store meta information in the model
     meta_name = 'fields'
+    # prefix to be used with field name when storing in tyrant 
     field_key = ''
     def __init__(self, initval=None, index=False, required=True, primary_index=False):
         self.required = required
@@ -18,14 +32,23 @@ class Field(object):
     
     @classmethod
     def pre_save(cls, model_obj, **kw):
+    """ Determines how the field will be stored in data store
+    For the base Field class, nothing special needs to be done, the model 
+    saves them
+    """
         pass
     
     @classmethod
     def make_model(cls, k, v, **kw):
+    """ Determines how to convert the data from datastore to model
+    For base Field class, simply return the value back
+    """
         return v
 
     @classmethod
     def create(cls, model_obj, mfields, o, init_get=False, **kw):
+    """ Initializes the field value for all fields of this(Field) type
+    """
         if not hasattr(model_obj,cls.meta_name):
             return
         d = mfields.keys()
@@ -35,6 +58,9 @@ class Field(object):
         
     @classmethod
     def data(cls, model_obj, **kw):
+    """ Converts objects into dict which is then serialized into json
+    and passed to datastore
+    """
         return dict((f.name, f.val) for f in model_obj.fields.values())
     
     def __get__(self, obj, objtype):
@@ -59,15 +85,21 @@ class ModelBase(type):
     Metaclass for kvds models
     """
     def __new__(cls, name,bases,attrs):
+        # create new class
         super_new = super(ModelBase, cls).__new__
         module = attrs.pop('__module__')
         new_class = super_new(cls, name, bases, {'__module__': module})
- 
+        
+        # adding most needed attributes to save, meta info about instance
         attrs['id'] = Field(primary_index=True)
         attrs['modelname'] = Field(initval=name)
         attrs['key_prefix'] = Field(initval=attrs.get('key_prefix',name))
 
+        # _meta, a dict which saves all fields of one type into array, 
+        # with the field meta_name as the key and the array as value
         new_class.add_to_class('_meta', {})
+        # field_prefix, a dict which saves fields prefix as keys and
+        # the class(not instance) as value
         new_class.add_to_class('field_prefix', {})
         for obj_name, obj in attrs.items():
             if isinstance(obj, Field):
@@ -84,7 +116,7 @@ class ModelBase(type):
         return new_class
     
     def add_to_class(cls, name, value):
-            setattr(cls, name, value)
+        setattr(cls, name, value)
     
 class Model(object):
     __metaclass__ = ModelBase
@@ -109,16 +141,14 @@ class Model(object):
     @classmethod
     def filter(cls, **kw):
         pass
-        #implement filter methos of indexed keys
-        # -- indexedkeys give value of main primary key, which in turn has the data
-        # -- for indexed keys, implement get at kvds layer which get data for key inside the give key, this acts as one to one mapping
-        # -- at kvds implement get_related call, which will get data for all keys inside a list of keys for the given key
-        # this will work a a many to many field
-        # use the above many to many to also implement a foreign field data which get complete model for a given key including foreign keys
-        # method should also have a call where user can ask only for particular set of keys
+        # TODO: - implement filter methods of indexed keys
+        # - at kvds implement get_related call, which will get data for all keys inside a list of keys for the given key
+        # - method should also have a call where user can ask only for particular set of keys
 
     @classmethod
     def get(cls, **kw):
+        """ Calls kvds, get dict and makes a model out of it
+        """
         o = cls.get_dict(**kw)
         m = dict_to_model(o)
         m.is_saved = True
@@ -126,6 +156,8 @@ class Model(object):
     
     @classmethod
     def get_dict(cls, **kw):
+        """ Calls kvds, gets a dict of the model
+        """
         assert len(kw) == 1
         k, v = kw.items()[0]
         field = cls._meta['fields'].get(k)
@@ -136,6 +168,7 @@ class Model(object):
         return o
 
     def __related_data__(self):
+        # TODO: Get the complete model in one go with the dict, best optimized if implemented at kvds than here
         pass
 
     def __data__(self):
@@ -146,7 +179,9 @@ class Model(object):
             data.update(klass.data(self))
         return data
 
-    def savem2m(self):
+    def save(self):
+        """ Saves the model in datastore serialized as json
+        """
         for fattrs in self._meta.keys():
             mfields = getattr(self,fattrs)
             klass = mfields.values()[0].__class__
@@ -158,13 +193,13 @@ class Model(object):
                 v = getattr(self, k)
                 key = construct_key(self.key_prefix, k, v)
                 primary_index_keys.append(key)
-                print key, "=>", simplejson.dumps(data)
-                #helper.kvds(key=key, value=simplejson.dumps(data))
+                #print key, "=>", simplejson.dumps(data)
+                helper.kvds(key=key, value=simplejson.dumps(data))
         for k,f in self.fields.items():
             if f.index:
                 v = getattr(self, k)
                 index_key = construct_key(self.key_prefix, k, v)
                 for pik in primary_index_keys:
-                    print index_key, "=>", pik
-                    #helper.kvds(key=index_key, pik)
+                    #print index_key, "=>", pik
+                    helper.kvds(key=index_key, pik)
         self.is_saved = True
