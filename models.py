@@ -2,7 +2,8 @@ import copy
 import sys
 import helper
 from django.utils import simplejson
-from common import dict_to_model, construct_key
+from kvds.common import dict_to_model, construct_key
+from kvds.exceptions import FieldError
 
 class Field(object):
     """ Base Field class, Other Fields extend this one 
@@ -15,8 +16,7 @@ class Field(object):
     - required : Will raise exception if this field is missing when 
     initializing model
     - primary_index : if this is True, complete model will be saved with
-    this field value as key and the model as value, in addition to the id
-    """
+    this field value as key and the model as value, in addition to the id """
     # key name to store meta information in the model
     meta_name = 'fields'
     # prefix to be used with field name when storing in tyrant 
@@ -32,23 +32,19 @@ class Field(object):
     
     @classmethod
     def pre_save(cls, model_obj, **kw):
-    """ Determines how the field will be stored in data store
-    For the base Field class, nothing special needs to be done, the model 
-    saves them
-    """
+        """ Determines how the field will be stored in data store
+        For the base Field class, nothing special needs to be done, the model 
+        saves them """
         pass
     
-    @classmethod
-    def make_model(cls, k, v, **kw):
-    """ Determines how to convert the data from datastore to model
-    For base Field class, simply return the value back
-    """
+    def make_model(self, k, v, **kw):
+        """ Determines how to convert the data from datastore to model
+        For base Field class, simply return the value back """
         return v
 
     @classmethod
     def create(cls, model_obj, mfields, o, init_get=False, **kw):
-    """ Initializes the field value for all fields of this(Field) type
-    """
+        """ Initializes the field value for all fields of this(Field) type """
         if not hasattr(model_obj,cls.meta_name):
             return
         d = mfields.keys()
@@ -58,9 +54,8 @@ class Field(object):
         
     @classmethod
     def data(cls, model_obj, **kw):
-    """ Converts objects into dict which is then serialized into json
-    and passed to datastore
-    """
+        """ Converts objects into dict which is then serialized into json
+        and passed to datastore """
         return dict((f.name, f.val) for f in model_obj.fields.values())
     
     def __get__(self, obj, objtype):
@@ -81,9 +76,7 @@ class Field(object):
         return obj
 
 class ModelBase(type):
-    """
-    Metaclass for kvds models
-    """
+    """ Metaclass for kvds models """
     def __new__(cls, name,bases,attrs):
         # create new class
         super_new = super(ModelBase, cls).__new__
@@ -108,7 +101,7 @@ class ModelBase(type):
                     new_class._meta[obj.meta_name] = {}
                 new_class._meta[obj.meta_name].update({obj.name:obj})
                 #print obj.meta_name, obj.name, obj.field_key , obj
-                new_class.field_prefix.update({obj.field_key:obj.__class__})
+                new_class.field_prefix.update({obj.field_key:obj})
                 new_class.add_to_class(obj_name, obj)
             else:
                 new_class.add_to_class(obj_name, obj)
@@ -147,22 +140,20 @@ class Model(object):
 
     @classmethod
     def get(cls, **kw):
-        """ Calls kvds, get dict and makes a model out of it
-        """
+        """ Calls kvds, get dict and makes a model out of it """
         o = cls.get_dict(**kw)
-        m = dict_to_model(o)
+        m = dict_to_model(cls, o)
         m.is_saved = True
         return m
     
     @classmethod
     def get_dict(cls, **kw):
-        """ Calls kvds, gets a dict of the model
-        """
+        """ Calls kvds, gets a dict of the model """
         assert len(kw) == 1
         k, v = kw.items()[0]
         field = cls._meta['fields'].get(k)
         assert field
-        assert field.index
+        assert field.primary_index
         key = construct_key(cls._meta['fields']['key_prefix'].val, k, v)
         o = simplejson.loads(helper.kvds(key=key)[key])
         return o
@@ -180,8 +171,7 @@ class Model(object):
         return data
 
     def save(self):
-        """ Saves the model in datastore serialized as json
-        """
+        """ Saves the model in datastore serialized as json """
         for fattrs in self._meta.keys():
             mfields = getattr(self,fattrs)
             klass = mfields.values()[0].__class__
@@ -201,5 +191,5 @@ class Model(object):
                 index_key = construct_key(self.key_prefix, k, v)
                 for pik in primary_index_keys:
                     #print index_key, "=>", pik
-                    helper.kvds(key=index_key, pik)
+                    helper.kvds(key=index_key, value=pik)
         self.is_saved = True

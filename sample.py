@@ -1,5 +1,5 @@
-from models import *
-from fields import *
+from kvds.models import *
+from kvds.fields import *
 
 class Bmodel(Model):
     key_prefix = 'kvds__b__comment'
@@ -21,14 +21,16 @@ class Cmodel(Model):
 class Comment(Model):
     key_prefix = 'kvds__comment'
     tmp = Field()
-    tmp1 = ManyToManyField()
-    tmpf = ForeignKey()
+    #tmp1 = ManyToManyField(Amodel)
+    tmpf = ForeignKey(Cmodel)
     ptmp = Field(index=True)
 
 #sample run
-bitem = Bmodel(b1='itemb1',b2='itemb2')
-aitem = Amodel(a1='itema1', a2='itema2', a3='itema3')
-citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
-c = Comment(tmp='Rane was here', tmp1=[aitem,bitem], tmpf=citem, ptmp='rane')
+#bitem = Bmodel(b1='itemb1',b2='itemb2')
+#a1item = Amodel(a1='itema1a1', a2='itema1a2', a3='itema1a3')
+#a2item = Amodel(a1='itema2a1', a2='itema2a2', a3='itema2a3')
+#citem = Cmodel(c1='itemc1', c2='itemc2', c3='itemc3')
+#c = Comment(tmp='Rane was here', tmp1=[a1item,a2item], tmpf=citem, ptmp='rane')
+#c = Comment(tmp='Rane was here', tmpf=citem, ptmp='rane')
 
-c.savem2m()
+#c.save()

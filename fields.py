@@ -1,37 +1,47 @@
 import copy
 import sys
-import helper
+import kvds.helper
 from django.utils import simplejson
-from common import dict_to_model, construct_key 
-from models import Model, Field
+from kvds.common import dict_to_model, construct_key 
+from kvds.models import Model, Field
+from kvds.exceptions import FieldError
+
+class ForeignKeyManager(object):
+    def __init__(self, v):
+        self.id = v['id']
+        self.modelname = v['modelname']
+        self.key_prefix = v['key_prefix']
 
 class ForeignKey(Field):
+    """ This field stored a model, value must be a model
+    """
     meta_name = 'foreign_fields'
     field_key = 'F__'
-    def __init__(self, initval=None):
+    manager = ForeignKeyManager
+    def __init__(self,to, initval=None):
+        self.to = to
         super(ForeignKey, self).__init__(initval=initval)
         
     @classmethod
     def pre_save(cls, model_obj, **kw):
+        """ Foreignkey will always be a model, to save it call the
+        models save method
+        """
         for f in model_obj.foreign_fields.values():
-            f.val.savem2m()
-    
-    @classmethod
-    def make_model(cls, k, v, **kw):
-        fobj = dict_to_model(v)
+            f.val.save()
+   
+    def make_model(self, k, v, **kw):
+        #fobj = dict_to_model(self.to, v)
+        fobj = ForeignKeyManager(v)
         return fobj
         
     @classmethod
     def create(cls, model_obj, mfields, o, init_get, **kw):
-        if not hasattr(model_obj,cls.meta_name):
+        """ If model data is not present, the value is set to
+        ForeignKeyManager
+        """
+        if not hasattr(model_obj, cls.meta_name):
             return
-        if init_get:
-            for prop in model_obj.foreign_fields.keys():
-                f_m = o.get(prop)
-                if f_m:
-                    model_obj.foreign_fields[prop].val = ForeignKeyManager(f_m.id, f_m.modelname, f_m.key_prefix)
-                else:
-                    model_obj.foreign_fields[prop].val = None
         else:
             for prop in model_obj.foreign_fields.keys(): 
                 setattr(model_obj, prop, o.get(prop))
@@ -53,7 +63,7 @@ class ForeignKey(Field):
         if self.required:
             if not val:
                 raise FieldError("%s is a required Field" % (self.name))
-        assert isinstance(val,Model) or isinstance(val, ForeignKeyManager)
+        assert isinstance(val,self.to) or isinstance(val, ForeignKeyManager)
         getattr(obj,self.meta_name)[self.name].val = val
     
     def __get__(self, obj, objtype):
@@ -61,39 +71,40 @@ class ForeignKey(Field):
         fo = getattr(obj, self.meta_name) 
         if isinstance(fo[self.name].val, ForeignKeyManager):
             fobj = fo[self.name].val
-            klass = globals()[fobj.modelname]
+            klass = self.to
             kvds_obj = klass.get(id=fobj.id)
             fo[self.name].val = kvds_obj
         return fo[self.name].val
 
-class ForeignKeyManager(object):
-    def __init__(self, id, modelname, key_prefix):
-        self.id = id
-        self.modelname = modelname
-        self.key_prefix = key_prefix
+class ManyToManyFieldManager(object):
+    def __init__(self, obj):
+        self.obj_fields = obj
 
 class ManyToManyField(Field):
     meta_name = 'many_to_many_fields'
     field_key = 'M__'
-    def __init__(self, initval=None):
+    manager = ManyToManyFieldManager
+    def __init__(self,to, initval=None):
+        self.to = to
         super(ManyToManyField, self).__init__(initval=initval)
 
     @classmethod
     def pre_save(cls, model_obj, **kw):
         for mtmf in model_obj.many_to_many_fields.values():
             for f in mtmf.val:
-                f.savem2m()
+                f.save()
 
-    @classmethod
-    def make_model(cls, k, v, **kw):
+    def make_model(self, k, v, **kw):
+        # TODO: this will also use init_get to return a manager and then the manager will handle the stuff 
         obj_models = []
         for val in v:
-            fobj = dict_to_model(val)
+            fobj = dict_to_model(self.to, val)
             obj_models.append(fobj)
         return obj_models
 
     @classmethod
     def create(cls, model_obj, mfields, o, init_get, **kw):
+        print "==================", init_get, model_obj, mfields, o
         if init_get:
             for prop in model_obj.many_to_many_fields.keys():
                 mtmf = o.get(prop)
@@ -127,7 +138,7 @@ class ManyToManyField(Field):
                 raise FieldError("%s is a required Field" % (self.name))
         assert isinstance(val,type([]))
         for v in val:
-            assert isinstance(v,Model) or isinstance(v, ManyToManyFieldManager)
+            assert isinstance(v,self.to) or isinstance(v, ManyToManyFieldManager)
         getattr(obj,self.meta_name)[self.name].val = val
     
     def __get__(self, obj, objtype):
@@ -142,10 +153,3 @@ class ManyToManyField(Field):
             fo[self.name].val = d
         return fo[self.name].val
 
-class ManyToManyFieldManager(object):
-    def __init__(self, obj):
-        self.obj_fields = obj
-
-class FieldError(Exception):
-    "The requested view does not exist"
-    pass
