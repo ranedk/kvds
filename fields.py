@@ -31,12 +31,10 @@ class ForeignKey(Field):
             f.val.save()
    
     def make_model(self, k, v, **kw):
-        #fobj = dict_to_model(self.to, v)
-        fobj = ForeignKeyManager(v)
-        return fobj
+        return ForeignKeyManager(v)
         
     @classmethod
-    def create(cls, model_obj, mfields, o, init_get, **kw):
+    def create(cls, model_obj, mfields, o, **kw):
         """ If model data is not present, the value is set to
         ForeignKeyManager
         """
@@ -52,10 +50,16 @@ class ForeignKey(Field):
         for f in model_obj.foreign_fields.values():
             if not f.val: continue
             f_key = "%s%s" % (cls.field_key, f.name)
-            data[f_key] = {} 
-            data[f_key].update({'id':f.val.id}) 
-            data[f_key].update({'modelname':f.val.modelname}) 
-            data[f_key].update({'key_prefix':f.val.key_prefix}) 
+            if isinstance(f, ForeignKey):
+                data[f_key] = {} 
+                data[f_key].update({'id':f.val.id}) 
+                data[f_key].update({'modelname':f.val.modelname}) 
+                data[f_key].update({'key_prefix':f.val.key_prefix}) 
+            if isinstance(f, ForeignKeyManager):
+                data[f_key] = {} 
+                data[f_key].update({'id':f.id}) 
+                data[f_key].update({'modelname':f.modelname}) 
+                data[f_key].update({'key_prefix':f.key_prefix}) 
         return data
 
     def __set__(self, obj, val):
@@ -95,38 +99,31 @@ class ManyToManyField(Field):
                 f.save()
 
     def make_model(self, k, v, **kw):
-        # TODO: this will also use init_get to return a manager and then the manager will handle the stuff 
-        obj_models = []
-        for val in v:
-            fobj = dict_to_model(self.to, val)
-            obj_models.append(fobj)
-        return obj_models
+        return ManyToManyFieldManager(v)
 
     @classmethod
-    def create(cls, model_obj, mfields, o, init_get, **kw):
-        print "==================", init_get, model_obj, mfields, o
-        if init_get:
-            for prop in model_obj.many_to_many_fields.keys():
-                mtmf = o.get(prop)
-                if mtmf:
-                    manager_obj = ManyToManyFieldManager(mtmf)
-                    model_obj.many_to_many_fields[prop].val = manager_obj
+    def create(cls, model_obj, mfields, o, **kw):
+        if not hasattr(model_obj, cls.meta_name):
+            return
         else:
             for prop in model_obj.many_to_many_fields.keys():
                 setattr(model_obj, prop, o.get(prop))
 
     @classmethod
     def data(cls, model_obj, **kw):
-        data = {}
         for mtmf in model_obj.many_to_many_fields.values():
+            data = {}
             if not mtmf.val: continue
             d = []
-            for f in mtmf.val: 
-                d.append({
-                        'id' : f.id ,
-                        'modelname' : f.modelname ,
-                        'key_prefix' : f.key_prefix , 
-                })
+            if isinstance(mtmf.val, type([])):
+                for f in mtmf.val: 
+                    d.append({
+                            'id' : f.id ,
+                            'modelname' : f.modelname ,
+                            'key_prefix' : f.key_prefix , 
+                    })
+            if isinstance(mtmf.val, ManyToManyFieldManager):
+                d = mtmf.val.obj_fields 
             f_key = "%s%s" % (mtmf.field_key, mtmf.name)
             data.update({f_key : d})
         return data
@@ -136,9 +133,10 @@ class ManyToManyField(Field):
         if self.required:
             if not val:
                 raise FieldError("%s is a required Field" % (self.name))
-        assert isinstance(val,type([]))
-        for v in val:
-            assert isinstance(v,self.to) or isinstance(v, ManyToManyFieldManager)
+        assert isinstance(val,type([])) or isinstance(val, ManyToManyFieldManager)
+        if isinstance(val,type([])):
+            for v in val:
+                assert isinstance(v,self.to)
         getattr(obj,self.meta_name)[self.name].val = val
     
     def __get__(self, obj, objtype):
@@ -147,8 +145,8 @@ class ManyToManyField(Field):
         fo = getattr(obj, self.meta_name) 
         if isinstance(fo[self.name].val, ManyToManyFieldManager):
             for fobj in fo[self.name].val.obj_fields:
-                klass = globals()[fobj.modelname]
-                kvds_obj = klass.get(id=fobj.id)
+                klass = self.to
+                kvds_obj = klass.get(id=fobj['id'])
                 d.append(kvds_obj)          
             fo[self.name].val = d
         return fo[self.name].val

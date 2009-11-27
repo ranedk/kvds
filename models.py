@@ -43,7 +43,7 @@ class Field(object):
         return v
 
     @classmethod
-    def create(cls, model_obj, mfields, o, init_get=False, **kw):
+    def create(cls, model_obj, mfields, o, **kw):
         """ Initializes the field value for all fields of this(Field) type """
         if not hasattr(model_obj,cls.meta_name):
             return
@@ -114,7 +114,7 @@ class ModelBase(type):
 class Model(object):
     __metaclass__ = ModelBase
     
-    def __init__(self, init_get=False, **o):
+    def __init__(self, **o):
         self.is_saved = False
 
         for meta_field in self._meta.keys():
@@ -129,7 +129,7 @@ class Model(object):
         for fattrs in self._meta.keys():
             mfields = getattr(self,fattrs)
             klass = mfields.values()[0].__class__
-            klass.create(self, mfields, o, init_get)
+            klass.create(self, mfields, o)
 
     @classmethod
     def filter(cls, **kw):

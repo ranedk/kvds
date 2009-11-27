@@ -1,4 +1,4 @@
-def dict_to_model(klass, d, fmodel=True):
+def dict_to_model(klass, d):
     o = {}
     for k,v in d.items():
         fkey = k.split('__')[0]
@@ -10,7 +10,7 @@ def dict_to_model(klass, d, fmodel=True):
             fname = k.split('__')[1]
         fobj = field_obj.make_model(fname,v)
         o.update({str(fname):fobj})
-    obj = klass(init_get=fmodel, **o)
+    obj = klass(**o)
     return obj
 
 def construct_key(key_prefix, keyname, key):
