@@ -32,6 +32,6 @@ c1item = Cmodel(c1='itemc1c1', c2='itemc1c2', c3='itemc1c3')
 c2item = Cmodel(c1='itemc2c1', c2='itemc2c2', c3='itemc2c3')
 
 comp_obj = Composite(compa='Random values here', compb=[c1item,c2item], compc=b1item, pid="23413423")
-#comp_obj.save()
+comp_obj.save()
 
-#comp_new = Composite.get(id=comp_obj.id)
+comp_new = Composite.get(id=comp_obj.id)
