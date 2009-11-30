@@ -1,4 +1,8 @@
 def dict_to_model(klass, d):
+    """ Takes a serialized dict object and converts it into object instance
+    - klass : class used to deserialize the dict
+    - d : serialized dict data to create object
+    """
     o = {}
     for k,v in d.items():
         fkey = k.split('__')[0]

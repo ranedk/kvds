@@ -64,10 +64,10 @@ class Field(object):
         return fo[self.name].val
 
     def __set__(self, obj, val):
+        #print "Field setting ", obj, val
         if self.required:
             if not val:
                 raise FieldError("%s is a required Field" % (self.name))
-        #print "Field setting ", obj, val
         fo = getattr(obj, self.meta_name) 
         fo[self.name].val = val
 
@@ -92,7 +92,7 @@ class ModelBase(type):
         # with the field meta_name as the key and the array as value
         new_class.add_to_class('_meta', {})
         # field_prefix, a dict which saves fields prefix as keys and
-        # the class(not instance) as value
+        # the instance as value
         new_class.add_to_class('field_prefix', {})
         for obj_name, obj in attrs.items():
             if isinstance(obj, Field):
@@ -140,7 +140,7 @@ class Model(object):
 
     @classmethod
     def get(cls, **kw):
-        """ Calls kvds, get dict and makes a model out of it """
+        """ Calls kvds, get dict and makes from the dict """
         o = cls.get_dict(**kw)
         m = dict_to_model(cls, o)
         m.is_saved = True

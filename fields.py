@@ -7,13 +7,16 @@ from kvds.models import Model, Field
 from kvds.exceptions import FieldError
 
 class ForeignKeyManager(object):
+    """ The manager gets initialized with meta info of the model.
+    It queries the datastore with that meta info to get the complete model
+    only when the data is needed """
     def __init__(self, v):
         self.id = v['id']
         self.modelname = v['modelname']
         self.key_prefix = v['key_prefix']
 
 class ForeignKey(Field):
-    """ This field stored a model, value must be a model
+    """ This field stores a model, value must be a model
     """
     meta_name = 'foreign_fields'
     field_key = 'F__'
@@ -46,6 +49,8 @@ class ForeignKey(Field):
     
     @classmethod
     def data(cls, model_obj, **kw):
+        """ data return complete model if value is set to model else
+        only meta information is returned if values is a manager """
         data = {}
         for f in model_obj.foreign_fields.values():
             if not f.val: continue
@@ -71,6 +76,8 @@ class ForeignKey(Field):
         getattr(obj,self.meta_name)[self.name].val = val
     
     def __get__(self, obj, objtype):
+        """ If value is a manager, the datastore is queried
+        and the model instance is set to the value and returned """
         #print "ForeignKey getting obj:", obj, "objtype:", objtype
         fo = getattr(obj, self.meta_name) 
         if isinstance(fo[self.name].val, ForeignKeyManager):
@@ -150,4 +157,3 @@ class ManyToManyField(Field):
                 d.append(kvds_obj)          
             fo[self.name].val = d
         return fo[self.name].val
-
