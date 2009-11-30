@@ -45,6 +45,7 @@ class Field(object):
     @classmethod
     def create(cls, model_obj, mfields, o, **kw):
         """ Initializes the field value for all fields of this(Field) type """
+        ## TODO:repair this method so that its inherited properly
         if not hasattr(model_obj,cls.meta_name):
             return
         d = mfields.keys()

@@ -6,6 +6,8 @@ from kvds.common import dict_to_model, construct_key
 from kvds.models import Model, Field
 from kvds.exceptions import FieldError
 
+import datetime, time
+
 class ForeignKeyManager(object):
     """ The manager gets initialized with meta info of the model.
     It queries the datastore with that meta info to get the complete model
@@ -157,3 +159,45 @@ class ManyToManyField(Field):
                 d.append(kvds_obj)          
             fo[self.name].val = d
         return fo[self.name].val
+
+class DateTimeField(Field):
+    meta_name = 'datetime_fields'
+    field_key = 'DT__'
+    def __init__(self, initval=None, required=False, auto_now=False, auto_now_add=False):
+        self.auto_now = auto_now
+        self.auto_now_add = auto_now_add
+        self.required = required
+        self.name = ''
+        self.val = initval
+    
+    def __set__(self, obj, val):
+        #print "DateTime Setter", obj, val
+        if self.required:
+            if not val:
+                raise FieldError("%s is a required Field" % (self.name))
+        if self.auto_now:
+            val = datetime.datetime.now()
+        if self.auto_now_add and not obj.is_saved():
+            val = datetime.datetime.now()
+            
+        assert isinstance(val,datetime.datetime)
+        getattr(obj,self.meta_name)[self.name].val = val
+    
+    def make_model(self, k, v, **kw):
+        return datetime.datetime.fromtimestamp(v)
+
+    @classmethod
+    def create(cls, model_obj, mfields, o, **kw):
+        if not hasattr(model_obj, cls.meta_name):
+            return
+        else:
+            for prop in model_obj.datetime_fields.keys(): 
+                setattr(model_obj, prop, o.get(prop))
+        
+    @classmethod
+    def data(cls, model_obj, **kw):
+        d = {}
+        for f in model_obj.datetime_fields.values():
+            f_key = "%s%s" % (cls.field_key, f.name)
+            d[f_key] = time.mktime(f.val.timetuple())
+        return d
