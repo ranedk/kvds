@@ -1,3 +1,7 @@
+
+#### The project has been moved to git://github.com/amitu/dutils.git, all future development will be pushed there ####
+
+
 Setting up Tokyo Cabinet, Tokyo Tyrant
 
     - Tokyo Cabinet is a high performance key/value data store. Without the overheads of mysql the performance beats relational databases hands down. Since it is not able to handle relational designs very effectively, it ends up restricting itself to database architectures which do not need normalization. Tokyo Tyrant is a wrapper over tokyo cabinet and provides network interface. To install 
